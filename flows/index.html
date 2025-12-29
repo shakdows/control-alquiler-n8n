@@ -7,7 +7,7 @@
   <style>
     body { font-family: system-ui, Arial; margin: 16px; max-width: 980px; }
     .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-    input, select, button { padding:10px; font-size:16px; }
+    input, select, button, textarea { padding:10px; font-size:16px; }
     button { cursor:pointer; }
     table { width:100%; border-collapse:collapse; margin-top:12px; }
     th, td { border-bottom:1px solid #ddd; padding:10px; text-align:left; }
@@ -16,6 +16,8 @@
     .bad { color: #c00; }
     .card { border:1px solid #ddd; border-radius:12px; padding:12px; margin-top:12px; }
     .muted { color:#666; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .small { font-size: 13px; }
   </style>
 </head>
 <body>
@@ -26,6 +28,7 @@
       <label class="muted">Webhook:</label>
       <input id="url" style="min-width:360px; flex:1"
         value="https://shakdows.app.n8n.cloud/webhook/admin" />
+      <button id="btnTest">Probar conexión</button>
       <button id="btnLoad">Cargar cargos</button>
     </div>
 
@@ -81,6 +84,11 @@
       </thead>
       <tbody></tbody>
     </table>
+
+    <div style="margin-top:12px;">
+      <div class="muted">Respuesta cruda (si algo falla):</div>
+      <textarea id="raw" class="mono small" style="width:100%; min-height:120px;" readonly></textarea>
+    </div>
   </div>
 
 <script>
@@ -102,10 +110,43 @@
     el.className = ok ? "ok" : "bad";
   }
 
+  function setRaw(text) {
+    document.getElementById("raw").value = text || "";
+  }
+
+  function normalizeItems(resJson) {
+    // 1) respuesta como array
+    if (Array.isArray(resJson)) return resJson;
+
+    // 2) { items: [] }
+    if (Array.isArray(resJson?.items)) return resJson.items;
+
+    // 3) { data: { items: [] } }
+    if (Array.isArray(resJson?.data?.items)) return resJson.data.items;
+
+    // 4) Si n8n devuelve un solo objeto con forma { json: {...} } o similar
+    if (resJson && typeof resJson === "object") {
+      // intentar encontrar el primer array dentro
+      for (const k of Object.keys(resJson)) {
+        if (Array.isArray(resJson[k])) return resJson[k];
+        if (Array.isArray(resJson[k]?.items)) return resJson[k].items;
+      }
+    }
+    return [];
+  }
+
   function renderTable(items) {
     const tb = document.querySelector("#tbl tbody");
     tb.innerHTML = "";
-    (items || []).forEach(row => {
+
+    if (!items || items.length === 0) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td colspan="7" class="muted">No hay datos para mostrar.</td>`;
+      tb.appendChild(tr);
+      return;
+    }
+
+    items.forEach(row => {
       const tr = document.createElement("tr");
       tr.style.cursor = "pointer";
       tr.innerHTML = `
@@ -128,27 +169,39 @@
   async function cargarCargos(filtros={}) {
     const url = document.getElementById("url").value.trim();
     setStatus("Cargando...", true);
+    setRaw("");
 
-    // Si tu flujo ya soporta filtro en action cargos.list, lo usará.
-    // Si no, igual mostrará todo.
     const res = await postJSON(url, { action: "cargos.list", filter: filtros });
 
+    // Siempre mostramos el raw para que no “parezca vacío”
+    setRaw(res.text);
+
     if (!res.ok) {
-      setStatus(`Error (${res.status}): ${res.text.slice(0,120)}`, false);
+      setStatus(`Error (${res.status}). Revisa el cuadro "Respuesta cruda".`, false);
       renderTable([]);
       return;
     }
 
-    // Aceptamos ambas respuestas: lista directa o {data:{items:[]}}
-    const data = res.json;
-    let items = [];
-    if (Array.isArray(data)) items = data;
-    else if (data?.data?.items && Array.isArray(data.data.items)) items = data.data.items;
-    else if (data?.items && Array.isArray(data.items)) items = data.items;
-
+    const items = normalizeItems(res.json);
     setStatus(`OK: ${items.length} cargos`, true);
     renderTable(items);
   }
+
+  document.getElementById("btnTest").onclick = async () => {
+    const url = document.getElementById("url").value.trim();
+    setStatus("Probando...", true);
+    setRaw("");
+
+    const res = await postJSON(url, { action: "cargos.list" });
+    setRaw(res.text);
+
+    if (!res.ok) {
+      setStatus(`Falla (${res.status}). Revisa "Respuesta cruda".`, false);
+      return;
+    }
+    const items = normalizeItems(res.json);
+    setStatus(`Conexión OK. Respuesta: ${items.length} cargos`, true);
+  };
 
   document.getElementById("btnLoad").onclick = () => cargarCargos({});
   document.getElementById("btnFilter").onclick = () => {
@@ -178,14 +231,17 @@
 
     const respEl = document.getElementById("pagoResp");
     respEl.textContent = "Enviando...";
+    setRaw("");
+
     const res = await postJSON(url, payload);
+    setRaw(res.text);
 
     if (!res.ok) {
-      respEl.textContent = `Error (${res.status}): ${res.text}`;
+      respEl.textContent = `Error (${res.status}). Revisa "Respuesta cruda".`;
       return;
     }
-    respEl.textContent = `OK: ${JSON.stringify(res.json)}`;
-    // refresca cargos
+
+    respEl.textContent = `OK. Pago registrado.`;
     await cargarCargos({});
   };
 
