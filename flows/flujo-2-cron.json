@@ -1,0 +1,281 @@
+{
+  "name": "Flujo 2 - Generar cargos por dia_vencimiento (anti-duplicado)",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "hour": 1
+            }
+          ]
+        }
+      },
+      "id": "75508220-5229-47fe-b101-c795866d122c",
+      "name": "Cron Diario",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        272,
+        208
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1I2GMcfPkimqM55fGjWITSlVGoAr3IoNztjhhuu2wjKU",
+          "mode": "list",
+          "cachedResultName": "Control_Alquiler_Admin",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1I2GMcfPkimqM55fGjWITSlVGoAr3IoNztjhhuu2wjKU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "inquilinos",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1I2GMcfPkimqM55fGjWITSlVGoAr3IoNztjhhuu2wjKU/edit#gid=0"
+        },
+        "options": {}
+      },
+      "id": "40f75f48-4423-43a8-a1a6-120156c8c413",
+      "name": "Read Inquilinos",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        496,
+        208
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "Qnxk8V98wzbYWPyM",
+          "name": "ALQUILER INQUILINOS 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1I2GMcfPkimqM55fGjWITSlVGoAr3IoNztjhhuu2wjKU",
+          "mode": "list",
+          "cachedResultName": "Control_Alquiler_Admin",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1I2GMcfPkimqM55fGjWITSlVGoAr3IoNztjhhuu2wjKU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1097327626,
+          "mode": "list",
+          "cachedResultName": "cargos",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1I2GMcfPkimqM55fGjWITSlVGoAr3IoNztjhhuu2wjKU/edit#gid=1097327626"
+        },
+        "options": {}
+      },
+      "id": "20bbf149-0fca-451b-bc5e-f004d74143fc",
+      "name": "Read Cargos Existentes",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        736,
+        208
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "Qnxk8V98wzbYWPyM",
+          "name": "ALQUILER INQUILINOS 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "const hoy = new Date();\nconst diaHoy = hoy.getDate();\nconst yyyy = hoy.getFullYear();\nconst mm = String(hoy.getMonth() + 1).padStart(2, '0');\nconst periodo = `${yyyy}-${mm}`;\n\nconst inquilinos = $items('Read Inquilinos').map(i => i.json);\nconst cargosExistentes = $items('Read Cargos Existentes').map(i => i.json);\n\nconst existentesSet = new Set(\n  cargosExistentes\n    .map(c => String(c.id_cargo || '').trim())\n    .filter(Boolean)\n);\n\nconst nuevos = [];\n\nfor (const inq of inquilinos) {\n  const estado = String(inq.estado || '').toLowerCase().trim();\n  const dia = Number(inq.dia_vencimiento);\n\n  if (estado !== 'activo') continue;\n  if (!Number.isFinite(dia) || dia !== diaHoy) continue;\n\n  const inquilino_id = String(inq.inquilino_id || '').trim();\n  if (!inquilino_id) continue;\n\n  const monto = Number(inq.monto_mensual);\n  if (!Number.isFinite(monto) || monto <= 0) continue;\n\n  const id_cargo = `CAR-${periodo}-${inquilino_id}`;\n  if (existentesSet.has(id_cargo)) continue; // anti-duplicado\n\n  const fecha_vencimiento = `${yyyy}-${mm}-${String(diaHoy).padStart(2,'0')}`;\n\n  nuevos.push({\n    json: {\n      id_cargo,\n      inquilino_id,\n      periodo,\n      fecha_vencimiento,\n      monto,\n      estado: 'pendiente',\n      fecha_pago: '',\n      saldo_pendiente: monto\n    }\n  });\n}\n\nreturn nuevos;"
+      },
+      "id": "665a9ef8-6da8-4dfb-ab35-ffeed38f5f3f",
+      "name": "Generar Cargos (hoy + anti-duplicado)",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        960,
+        208
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1I2GMcfPkimqM55fGjWITSlVGoAr3IoNztjhhuu2wjKU",
+          "mode": "list",
+          "cachedResultName": "Control_Alquiler_Admin",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1I2GMcfPkimqM55fGjWITSlVGoAr3IoNztjhhuu2wjKU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1097327626,
+          "mode": "list",
+          "cachedResultName": "cargos",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1I2GMcfPkimqM55fGjWITSlVGoAr3IoNztjhhuu2wjKU/edit#gid=1097327626"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "id_cargo",
+              "displayName": "id_cargo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "inquilino_id",
+              "displayName": "inquilino_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "periodo",
+              "displayName": "periodo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "fecha_vencimiento",
+              "displayName": "fecha_vencimiento",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "monto",
+              "displayName": "monto",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "estado",
+              "displayName": "estado",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "fecha_pago",
+              "displayName": "fecha_pago",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "saldo_pendiente",
+              "displayName": "saldo_pendiente",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "234fc604-62ba-4f06-bcc2-560a348240ad",
+      "name": "Append Cargos",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        1184,
+        208
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "Qnxk8V98wzbYWPyM",
+          "name": "ALQUILER INQUILINOS 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Cron Diario": {
+      "main": [
+        [
+          {
+            "node": "Read Inquilinos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Inquilinos": {
+      "main": [
+        [
+          {
+            "node": "Read Cargos Existentes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Cargos Existentes": {
+      "main": [
+        [
+          {
+            "node": "Generar Cargos (hoy + anti-duplicado)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generar Cargos (hoy + anti-duplicado)": {
+      "main": [
+        [
+          {
+            "node": "Append Cargos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "27896f3c-593c-4c3a-a599-7a9fb29b31c3",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ec98d6390d26e044e02ecf4b403d5e765f14e08a3fd8b167f8046a027352576a"
+  },
+  "id": "xnoT9kz56bEZVu7N",
+  "tags": []
+}
