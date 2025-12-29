@@ -1,0 +1,671 @@
+{
+  "name": "Flujo 1 - Control Alquiler Admin API",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "admin",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "3aa7badd-d7e4-4dfa-bc87-ad42cd72cedb",
+      "name": "Webhook Admin",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -656,
+        208
+      ],
+      "webhookId": "ec6cc46b-f6bf-49b7-9a89-4f0236dd9968",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "action",
+              "value": "={{$json.action}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9bdc676b-9fb4-4c6e-a73b-e23935856792",
+      "name": "Normalize Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        208
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{$json.action}}",
+        "rules": {
+          "rules": [
+            {
+              "value2": "cargos.list"
+            },
+            {
+              "value2": "pagos.add",
+              "output": 1
+            }
+          ]
+        }
+      },
+      "id": "d6a25f74-60f9-4ab5-94d8-5e9d70fcdda8",
+      "name": "Router Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        -256,
+        208
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1I2GMcfPkimqM55fGjWITSlVGoAr3IoNztjhhuu2wjKU",
+          "mode": "list",
+          "cachedResultName": "Control_Alquiler_Admin",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1I2GMcfPkimqM55fGjWITSlVGoAr3IoNztjhhuu2wjKU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1097327626,
+          "mode": "list",
+          "cachedResultName": "cargos",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1I2GMcfPkimqM55fGjWITSlVGoAr3IoNztjhhuu2wjKU/edit#gid=1097327626"
+        },
+        "options": {}
+      },
+      "id": "5f228ff7-cbd0-4562-9a23-bed02d957520",
+      "name": "Read Cargos",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        0,
+        0
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "Qnxk8V98wzbYWPyM",
+          "name": "ALQUILER INQUILINOS 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "const filtros = $json.filter || {};\nconst hoy = new Date().toISOString().split('T')[0];\n\nconst items = items.filter(i => {\n  if (filtros.estado && i.json.estado !== filtros.estado) return false;\n  if (filtros.periodo && i.json.periodo !== filtros.periodo) return false;\n  if (filtros.inquilino_id && i.json.inquilino_id !== filtros.inquilino_id) return false;\n  return true;\n}).map(i => {\n  const f = i.json.fecha_vencimiento;\n  if (i.json.estado !== 'anulado') {\n    if (Number(i.json.saldo_pendiente) <= 0) i.json.estado = 'pagado';\n    else if (hoy > f) i.json.estado = 'vencido';\n    else i.json.estado = 'pendiente';\n  }\n  return i;\n});\n\nreturn items;"
+      },
+      "id": "6106e078-a17d-4099-b0f7-5db8c300f523",
+      "name": "Filter + Estado",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        208,
+        0
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "id": "e732a84a-901f-4754-a384-e5c955d00b04",
+      "name": "Respond cargos.list",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        400,
+        0
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "functionCode": "const body = $json.body ?? $json;      // por si el webhook entrega body\nconst data = body.data ?? body;\n\nif (!data) throw new Error(\"Falta data\");\n\nconst id_cargo = String(data.id_cargo || \"\").trim();\nconst inquilino_id = String(data.inquilino_id || \"\").trim();\nconst monto_pagado = Number(data.monto_pagado);\n\nif (!id_cargo) throw new Error(\"Falta id_cargo\");\nif (!inquilino_id) throw new Error(\"Falta inquilino_id\");\nif (!Number.isFinite(monto_pagado) || monto_pagado <= 0) throw new Error(\"monto_pagado inválido\");\n\nconst fecha_pago = (data.fecha_pago ? String(data.fecha_pago) : new Date().toISOString().slice(0,10));\nconst metodo = String(data.metodo || \"\").trim();\nconst referencia = String(data.referencia || \"\").trim();\n\nreturn [{\n  json: { id_cargo, inquilino_id, monto_pagado, metodo, referencia, fecha_pago }\n}];\n"
+      },
+      "id": "3a000c69-a918-4864-8713-78bb70b586ae",
+      "name": "Validate Pago",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        0,
+        208
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1I2GMcfPkimqM55fGjWITSlVGoAr3IoNztjhhuu2wjKU",
+          "mode": "list",
+          "cachedResultName": "Control_Alquiler_Admin",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1I2GMcfPkimqM55fGjWITSlVGoAr3IoNztjhhuu2wjKU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1097327626,
+          "mode": "list",
+          "cachedResultName": "cargos",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1I2GMcfPkimqM55fGjWITSlVGoAr3IoNztjhhuu2wjKU/edit#gid=1097327626"
+        },
+        "options": {}
+      },
+      "id": "05dd1209-90a2-476e-84b1-b43b7e764338",
+      "name": "Read Cargo Pago",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        208,
+        208
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "Qnxk8V98wzbYWPyM",
+          "name": "ALQUILER INQUILINOS 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1I2GMcfPkimqM55fGjWITSlVGoAr3IoNztjhhuu2wjKU",
+          "mode": "list",
+          "cachedResultName": "Control_Alquiler_Admin",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1I2GMcfPkimqM55fGjWITSlVGoAr3IoNztjhhuu2wjKU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1818749399,
+          "mode": "list",
+          "cachedResultName": "pagos",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1I2GMcfPkimqM55fGjWITSlVGoAr3IoNztjhhuu2wjKU/edit#gid=1818749399"
+        },
+        "options": {}
+      },
+      "id": "9a078e3c-6c30-44dd-8642-bcba8b3e4dd7",
+      "name": "Read Pagos",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        576,
+        208
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "Qnxk8V98wzbYWPyM",
+          "name": "ALQUILER INQUILINOS 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "const pagoNuevo = $items(\"Validate Pago\")[0].json;\nconst cargo = $items(\"Select Cargo By ID\")[0].json;\nconst pagosPrevios = $items(\"Select Pagos By Cargo\").map(i => i.json);\n\nif (String(cargo.estado).trim() === \"anulado\") {\n  throw new Error(\"Cargo anulado, no se puede registrar pago\");\n}\n\nconst montoCargo = Number(cargo.monto || 0);\nconst totalPrevio = pagosPrevios.reduce((s, p) => s + Number(p.monto_pagado || 0), 0);\nconst totalPagado = totalPrevio + Number(pagoNuevo.monto_pagado || 0);\n\nconst nuevoSaldo = Math.max(0, montoCargo - totalPagado);\n\nconst hoy = new Date().toISOString().slice(0, 10);\nlet estado = \"pendiente\";\nif (nuevoSaldo === 0) estado = \"pagado\";\nelse if (String(hoy) > String(cargo.fecha_vencimiento)) estado = \"vencido\";\n\nconst pago_id = `PAG-${Date.now()}-${Math.floor(Math.random()*100000)}`;\n\nreturn [{\n  json: {\n    // para Append Pago\n    pago_id,\n    id_cargo: cargo.id_cargo,\n    inquilino_id: pagoNuevo.inquilino_id,\n    monto_pagado: pagoNuevo.monto_pagado,\n    metodo: pagoNuevo.metodo,\n    referencia: pagoNuevo.referencia,\n    fecha_pago: pagoNuevo.fecha_pago,\n\n    // para Update Cargo\n    cargo_id_cargo: cargo.id_cargo,\n    nuevoSaldo,\n    estado,\n    fecha_pago_cargo: (estado === \"pagado\" ? pagoNuevo.fecha_pago : \"\")\n  }\n}];\n"
+      },
+      "id": "6cbafbe6-3bfc-4b68-b894-16ca6d1ab9ad",
+      "name": "Calcular Saldo",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        976,
+        208
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1I2GMcfPkimqM55fGjWITSlVGoAr3IoNztjhhuu2wjKU",
+          "mode": "list",
+          "cachedResultName": "Control_Alquiler_Admin",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1I2GMcfPkimqM55fGjWITSlVGoAr3IoNztjhhuu2wjKU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1818749399,
+          "mode": "list",
+          "cachedResultName": "pagos",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1I2GMcfPkimqM55fGjWITSlVGoAr3IoNztjhhuu2wjKU/edit#gid=1818749399"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "pago_id",
+              "displayName": "pago_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "id_cargo",
+              "displayName": "id_cargo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "inquilino_id",
+              "displayName": "inquilino_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "monto_pagado",
+              "displayName": "monto_pagado",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "metodo",
+              "displayName": "metodo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "referencia",
+              "displayName": "referencia",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "fecha_pago",
+              "displayName": "fecha_pago",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "ca27a965-c330-42e2-bec8-030b11cb92fb",
+      "name": "Append Pago",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        1168,
+        208
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "Qnxk8V98wzbYWPyM",
+          "name": "ALQUILER INQUILINOS 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1I2GMcfPkimqM55fGjWITSlVGoAr3IoNztjhhuu2wjKU",
+          "mode": "list",
+          "cachedResultName": "Control_Alquiler_Admin",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1I2GMcfPkimqM55fGjWITSlVGoAr3IoNztjhhuu2wjKU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1097327626,
+          "mode": "list",
+          "cachedResultName": "cargos",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1I2GMcfPkimqM55fGjWITSlVGoAr3IoNztjhhuu2wjKU/edit#gid=1097327626"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "id_cargo"
+          ],
+          "schema": [
+            {
+              "id": "id_cargo",
+              "displayName": "id_cargo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "inquilino_id",
+              "displayName": "inquilino_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "periodo",
+              "displayName": "periodo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "fecha_vencimiento",
+              "displayName": "fecha_vencimiento",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "monto",
+              "displayName": "monto",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "estado",
+              "displayName": "estado",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "fecha_pago",
+              "displayName": "fecha_pago",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "saldo_pendiente",
+              "displayName": "saldo_pendiente",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "7acc5e8b-e827-43dd-9e22-e6e8afbc278c",
+      "name": "Update Cargo",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        1376,
+        208
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "Qnxk8V98wzbYWPyM",
+          "name": "ALQUILER INQUILINOS 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "638a3820-84b7-4459-81bd-c763f5536523",
+      "name": "Respond pagos.add",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1568,
+        208
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const idCargo = $items(\"Validate Pago\")[0].json.id_cargo;\n\nconst match = items.filter(i =>\n  String(i.json.id_cargo || \"\").trim() === String(idCargo).trim()\n);\n\nif (match.length === 0) {\n  throw new Error(`Cargo no encontrado: ${idCargo}`);\n}\n\nreturn [match[0]];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        208
+      ],
+      "id": "c2b07ce2-c7c9-44cb-a645-342b896cad55",
+      "name": "Select Cargo By ID"
+    },
+    {
+      "parameters": {
+        "jsCode": "const idCargo = $items(\"Validate Pago\")[0].json.id_cargo;\n\nconst pagos = items.filter(i =>\n  String(i.json.id_cargo || \"\").trim() === String(idCargo).trim()\n);\n\nreturn pagos; // puede ser 0..n\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        208
+      ],
+      "id": "0f31f164-3d41-4785-a377-6ed4e61ed351",
+      "name": "Select Pagos By Cargo"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Admin": {
+      "main": [
+        [
+          {
+            "node": "Normalize Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Input": {
+      "main": [
+        [
+          {
+            "node": "Router Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Router Action": {
+      "main": [
+        [
+          {
+            "node": "Read Cargos",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validate Pago",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Pago": {
+      "main": [
+        [
+          {
+            "node": "Read Cargo Pago",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Cargo Pago": {
+      "main": [
+        [
+          {
+            "node": "Select Cargo By ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append Pago": {
+      "main": [
+        [
+          {
+            "node": "Update Cargo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Cargos": {
+      "main": [
+        [
+          {
+            "node": "Filter + Estado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Pagos": {
+      "main": [
+        [
+          {
+            "node": "Select Pagos By Cargo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calcular Saldo": {
+      "main": [
+        [
+          {
+            "node": "Append Pago",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Cargo": {
+      "main": [
+        [
+          {
+            "node": "Respond pagos.add",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter + Estado": {
+      "main": [
+        [
+          {
+            "node": "Respond cargos.list",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Cargo By ID": {
+      "main": [
+        [
+          {
+            "node": "Read Pagos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Pagos By Cargo": {
+      "main": [
+        [
+          {
+            "node": "Calcular Saldo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "a348c12c-f83b-420c-ac73-dd277171c58e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ec98d6390d26e044e02ecf4b403d5e765f14e08a3fd8b167f8046a027352576a"
+  },
+  "id": "U8NAUqjL2ydNehNf",
+  "tags": []
+}
