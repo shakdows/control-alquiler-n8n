@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Control de Alquiler - Admin</title>
+  <style>
+    body { font-family: system-ui, Arial; margin: 16px; max-width: 980px; }
+    .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    input, select, button { padding:10px; font-size:16px; }
+    button { cursor:pointer; }
+    table { width:100%; border-collapse:collapse; margin-top:12px; }
+    th, td { border-bottom:1px solid #ddd; padding:10px; text-align:left; }
+    .tag { padding:4px 10px; border-radius:999px; border:1px solid #ccc; display:inline-block; }
+    .ok { color: #0a7; }
+    .bad { color: #c00; }
+    .card { border:1px solid #ddd; border-radius:12px; padding:12px; margin-top:12px; }
+    .muted { color:#666; }
+  </style>
+</head>
+<body>
+  <h2>Control de Alquiler (Admin)</h2>
+
+  <div class="card">
+    <div class="row">
+      <label class="muted">Webhook:</label>
+      <input id="url" style="min-width:360px; flex:1"
+        value="https://shakdows.app.n8n.cloud/webhook/admin" />
+      <button id="btnLoad">Cargar cargos</button>
+    </div>
+
+    <div class="row" style="margin-top:10px;">
+      <label class="muted">Estado:</label>
+      <select id="estado">
+        <option value="">Todos</option>
+        <option value="pendiente">pendiente</option>
+        <option value="vencido">vencido</option>
+        <option value="pagado">pagado</option>
+        <option value="anulado">anulado</option>
+      </select>
+
+      <label class="muted">Periodo (YYYY-MM):</label>
+      <input id="periodo" placeholder="2025-01" />
+
+      <label class="muted">Inquilino ID:</label>
+      <input id="inq" placeholder="INQ-001" />
+
+      <button id="btnFilter">Filtrar</button>
+      <span id="status" class="muted"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Registrar pago</h3>
+    <div class="row">
+      <input id="p_id_cargo" placeholder="id_cargo (CAR-...)" style="min-width:220px; flex:1" />
+      <input id="p_inq" placeholder="inquilino_id (INQ-...)" style="min-width:180px;" />
+      <input id="p_monto" placeholder="monto_pagado" type="number" />
+      <input id="p_metodo" placeholder="metodo (Yape/Efectivo)" />
+      <input id="p_ref" placeholder="referencia" />
+      <input id="p_fecha" placeholder="fecha_pago YYYY-MM-DD" />
+      <button id="btnPagar">Enviar pago</button>
+    </div>
+    <div id="pagoResp" class="muted" style="margin-top:8px;"></div>
+  </div>
+
+  <div class="card">
+    <h3>Cargos</h3>
+    <div class="muted">Tip: toca una fila para autollenar el pago.</div>
+    <table id="tbl">
+      <thead>
+        <tr>
+          <th>id_cargo</th>
+          <th>inquilino_id</th>
+          <th>periodo</th>
+          <th>vencimiento</th>
+          <th>monto</th>
+          <th>saldo</th>
+          <th>estado</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+<script>
+  async function postJSON(url, body) {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const txt = await r.text();
+    let json = null;
+    try { json = JSON.parse(txt); } catch {}
+    return { ok: r.ok, status: r.status, text: txt, json };
+  }
+
+  function setStatus(msg, ok=true) {
+    const el = document.getElementById("status");
+    el.textContent = msg;
+    el.className = ok ? "ok" : "bad";
+  }
+
+  function renderTable(items) {
+    const tb = document.querySelector("#tbl tbody");
+    tb.innerHTML = "";
+    (items || []).forEach(row => {
+      const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      tr.innerHTML = `
+        <td>${row.id_cargo ?? ""}</td>
+        <td>${row.inquilino_id ?? ""}</td>
+        <td>${row.periodo ?? ""}</td>
+        <td>${row.fecha_vencimiento ?? ""}</td>
+        <td>${row.monto ?? ""}</td>
+        <td>${row.saldo_pendiente ?? ""}</td>
+        <td><span class="tag">${row.estado ?? ""}</span></td>
+      `;
+      tr.onclick = () => {
+        document.getElementById("p_id_cargo").value = row.id_cargo ?? "";
+        document.getElementById("p_inq").value = row.inquilino_id ?? "";
+      };
+      tb.appendChild(tr);
+    });
+  }
+
+  async function cargarCargos(filtros={}) {
+    const url = document.getElementById("url").value.trim();
+    setStatus("Cargando...", true);
+
+    // Si tu flujo ya soporta filtro en action cargos.list, lo usará.
+    // Si no, igual mostrará todo.
+    const res = await postJSON(url, { action: "cargos.list", filter: filtros });
+
+    if (!res.ok) {
+      setStatus(`Error (${res.status}): ${res.text.slice(0,120)}`, false);
+      renderTable([]);
+      return;
+    }
+
+    // Aceptamos ambas respuestas: lista directa o {data:{items:[]}}
+    const data = res.json;
+    let items = [];
+    if (Array.isArray(data)) items = data;
+    else if (data?.data?.items && Array.isArray(data.data.items)) items = data.data.items;
+    else if (data?.items && Array.isArray(data.items)) items = data.items;
+
+    setStatus(`OK: ${items.length} cargos`, true);
+    renderTable(items);
+  }
+
+  document.getElementById("btnLoad").onclick = () => cargarCargos({});
+  document.getElementById("btnFilter").onclick = () => {
+    const estado = document.getElementById("estado").value.trim();
+    const periodo = document.getElementById("periodo").value.trim();
+    const inq = document.getElementById("inq").value.trim();
+    const f = {};
+    if (estado) f.estado = estado;
+    if (periodo) f.periodo = periodo;
+    if (inq) f.inquilino_id = inq;
+    cargarCargos(f);
+  };
+
+  document.getElementById("btnPagar").onclick = async () => {
+    const url = document.getElementById("url").value.trim();
+    const id_cargo = document.getElementById("p_id_cargo").value.trim();
+    const inquilino_id = document.getElementById("p_inq").value.trim();
+    const monto_pagado = Number(document.getElementById("p_monto").value);
+    const metodo = document.getElementById("p_metodo").value.trim();
+    const referencia = document.getElementById("p_ref").value.trim();
+    const fecha_pago = document.getElementById("p_fecha").value.trim();
+
+    const payload = {
+      action: "pagos.add",
+      data: { id_cargo, inquilino_id, monto_pagado, metodo, referencia, fecha_pago }
+    };
+
+    const respEl = document.getElementById("pagoResp");
+    respEl.textContent = "Enviando...";
+    const res = await postJSON(url, payload);
+
+    if (!res.ok) {
+      respEl.textContent = `Error (${res.status}): ${res.text}`;
+      return;
+    }
+    respEl.textContent = `OK: ${JSON.stringify(res.json)}`;
+    // refresca cargos
+    await cargarCargos({});
+  };
+
+  // carga inicial
+  cargarCargos({});
+</script>
+</body>
+</html>
